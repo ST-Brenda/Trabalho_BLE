@@ -1,13 +1,8 @@
 /*
 Engenharia de Computação - UPF
 Comunicação de dados em Aplicações Embarcadas
-Marcelo Trindade Rebonatto
-28/10/2023
-Server Inicial BLE
-Adaptado de Based on Neil Kolban example for IDF: 
-    https://github.com/nkolban/esp32-snippets/blob/master/cpp_utils/tests/BLE%20Tests/SampleServer.cpp
-    Ported to Arduino ESP32 by Evandro Copercini
-    updates by chegewara
+INTEGRANTES DO GRUPO: Brenda Slongo Taca   - 197402
+                      Gustavo Luiz Rosset  - 198100
 */
 
 #include <Arduino.h>
@@ -32,7 +27,7 @@ Adaptado de Based on Neil Kolban example for IDF:
         
 
 // Características de NOTIFICAÇÃO
-#define CHAR_UUID_COUNT_NOTIFY  "dfbfc486-d01c-4b77-8db0-26993e0eec0e" // Notifica qtd de notas
+#define CHAR_UUID_COUNT_NOTAS_NOTIFY  "dfbfc486-d01c-4b77-8db0-26993e0eec0e" // Notifica qtd de notas
 #define CHAR_UUID_MEDIA_STATUS      "b3fd6848-6bdd-46b2-b976-636465d8b072" // Notifica situação da média
 
 // Variável que vai armazenar as notas
@@ -49,7 +44,7 @@ BLECharacteristic *pCharac_add_nota;
 BLECharacteristic *pCharac_remove_nota;
 BLECharacteristic *pCharac_listar_notas;
 BLECharacteristic *pCharac_nota_por_indice;
-BLECharacteristic *pCharac_count_notify;
+BLECharacteristic *pCharac_count_notas_notify;
 BLECharacteristic *pCharac_media_status;
 
 // Variáveis para armazenar a soma das notas e a média
@@ -71,8 +66,8 @@ class MyServerCallbacks: public BLEServerCallbacks {
 void atualizarNotificacoes() {
     // 1 - Atualiza a contagem
     std::string MsgNumNotas = "Total de notas: " + std::to_string(listaDeNotas.size());
-    pCharac_count_notify->setValue(MsgNumNotas);
-    pCharac_count_notify->notify();
+    pCharac_count_notas_notify->setValue(MsgNumNotas);
+    pCharac_count_notas_notify->notify();
     Serial.println((String)"[Notify] Numero de notas enviado: " + MsgNumNotas.c_str());
 
     // 2 - Atualiza Média e Status
@@ -140,11 +135,17 @@ void atualizarListaLeitura() {
     std::string todasAsNotas = "";
     if (listaDeNotas.size() > 0) {
         for(int i = 0; i < listaDeNotas.size(); i++) {
-            todasAsNotas += listaDeNotas[i];
-            todasAsNotas += ";"; 
+            // Usando .c_str(), o C++ entende que deve pegar o texto
+            // APENAS até encontrar o \0, evitando que o \0 entre na string final.
+            todasAsNotas += listaDeNotas[i].c_str();
+            // Só adiciona vírgula se NÃO for a última nota
+            if (i < listaDeNotas.size() - 1) {
+                todasAsNotas += ","; 
+            }
         }
-    } else {
-        todasAsNotas = "Nenhuma nota salva";
+    } 
+    else {
+        todasAsNotas = "Nenhuma nota";
     }
     pCharac_listar_notas->setValue(todasAsNotas);
 }
@@ -235,13 +236,14 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks
                 // Precisa ser maior ou igual a 0 e menor que o tamanho do vetor, senão é inválido
                 if (indice >= 0 && indice < listaDeNotas.size()) {
                     // Pega a nota bem bonitinha
-                    notaEncontrada = listaDeNotas[indice];  // 
+                    notaEncontrada = "Índice " + std::to_string(indice) + ": ";
+                    notaEncontrada += listaDeNotas[indice];  
                     Serial.print("Nota correspondente: ");
                     Serial.println(notaEncontrada.c_str());
                 } 
                 else {
                     // Considera indice inválido
-                    notaEncontrada = "Erro: Indice invalido.";
+                    notaEncontrada = "Indice inválido.";
                     Serial.println("Erro: Indice invalido.");
                 }
                 
@@ -306,8 +308,8 @@ void setup() {
 
     // 5- Notifica numero de notas (Notify)
     // dfbfc486-d01c-4b77-8db0-26993e0eec0e
-    pCharac_count_notify = pService->createCharacteristic(
-                          CHAR_UUID_COUNT_NOTIFY,  
+    pCharac_count_notas_notify = pService->createCharacteristic(
+                          CHAR_UUID_COUNT_NOTAS_NOTIFY,  
                           BLECharacteristic::PROPERTY_NOTIFY 
                           );
 
@@ -321,7 +323,7 @@ void setup() {
     // Descritores (para permitir notificação) 
     // O descritor 0x2902 é padrão para habilitar notificações
     pCharac_nota_por_indice->addDescriptor(&notifyDescriptorIndice);
-    pCharac_count_notify->addDescriptor(&notifyDescriptorCount);
+    pCharac_count_notas_notify->addDescriptor(&notifyDescriptorCount);
     pCharac_media_status->addDescriptor(&notifyDescriptorMedia);
 
 
