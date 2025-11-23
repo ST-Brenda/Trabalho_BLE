@@ -39,12 +39,10 @@ Adaptado de Based on Neil Kolban example for IDF:
 std::vector<std::string> listaDeNotas;
 
 /* Global */
-BLEDescriptor notifyDescriptor(BLEUUID((uint16_t)0x2902));
-
-// um para cada
-// BLEDescriptor notifyDescriptorCount(BLEUUID((uint16_t)0x2902));
-// BLEDescriptor notifyDescriptorMedia(BLEUUID((uint16_t)0x2902));
-// BLEDescriptor notifyDescriptorIndice(BLEUUID((uint16_t)0x2902));
+// BLEDescriptor notifyDescriptor(BLEUUID((uint16_t)0x2902));
+BLEDescriptor notifyDescriptorCount(BLEUUID((uint16_t)0x2902));
+BLEDescriptor notifyDescriptorMedia(BLEUUID((uint16_t)0x2902));
+BLEDescriptor notifyDescriptorIndice(BLEUUID((uint16_t)0x2902));
 
 // Ponteiros para as características (para acesso global)
 BLECharacteristic *pCharac_add_nota;
@@ -57,6 +55,8 @@ BLECharacteristic *pCharac_media_status;
 // Variáveis para armazenar a soma das notas e a média
 double soma_notas = 0;
 double media_notas = 0;
+// Para guardar o último status
+String ultimoStatus = "Sem notas"; // Inicia assumindo que não tem notas
 
 // Tratamento do Anuncio de serviço quando disconecta 
 class MyServerCallbacks: public BLEServerCallbacks {
@@ -83,27 +83,56 @@ void atualizarNotificacoes() {
         media_notas = 0.0;
     }
 
-    String status = "";
+    // Determina o status ATUAL baseado na média
+    String statusAtual = "";
     if (listaDeNotas.size() == 0) {
-        status = "Sem notas";
+        statusAtual = "Sem notas";
     }
     else if (media_notas < 3.0) {
-        status = "Reprovado";
+        statusAtual = "Reprovado";
     }
     else if (media_notas < 7.0) {
-        status = "Exame";
+        statusAtual = "Exame";
     }
     else {
-        status = "Aprovado";
+        statusAtual = "Aprovado";
     }
-
-    // Formata a mensagem: "Media: 7.5 - Status: "
-    char buffer[50];
-    snprintf(buffer, sizeof(buffer), "Media: %.2f - %s", media_notas, status.c_str());
     
-    pCharac_media_status->setValue(std::string(buffer));
-    pCharac_media_status->notify();
-    Serial.println((String)"[Notify] Status enviado: " + buffer);
+    Serial.printf("Media atual: %.2f\n", media_notas);
+
+
+    // VERIFICA SE MUDOU DE ESTADO:
+    // Se o status calculado AGORA for diferente do ÚLTIMO status:
+    if ( !statusAtual.equals(ultimoStatus) ) {
+        
+        // Houve mudança! Prepara a mensagem
+        char buffer[60];
+        snprintf(buffer, sizeof(buffer), "%s Media: %.2f", statusAtual.c_str(), media_notas);
+        
+        // Atualiza valor e notifica
+        pCharac_media_status->setValue(std::string(buffer));
+        pCharac_media_status->notify();
+        
+        Serial.println("=============================================");
+        Serial.print("[EVENTO] O status mudou de '");
+        Serial.print(ultimoStatus);
+        Serial.print("' para '");
+        Serial.print(statusAtual);
+        Serial.println("' -> Notificacao enviada!");
+        Serial.println("=============================================");
+
+        // Atualiza a memória para a próxima vez
+        ultimoStatus = statusAtual;
+    } 
+    else {
+        // Se o status é o mesmo (ex: era exame com 5.0, agora é exame com 6.0)
+        // A gente NÃO notifica, apenas atualiza o valor caso alguém queira ler manualmente
+        char bufferLeitura[60];
+        snprintf(bufferLeitura, sizeof(bufferLeitura), "Status mantido: %s (Media: %.2f)", statusAtual.c_str(), media_notas);
+        pCharac_media_status->setValue(std::string(bufferLeitura)); // Atualiza só pra leitura (Read)
+        
+        Serial.println("[Info] Status é o mesmo. Sem notify de status.");
+    }
 }
 
 // Função para atualizar a lista de leitura 
@@ -160,28 +189,30 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks
         // 2- Se cliente exsccreveu na característica "Remover Nota"
         // ===============================================================
         else if (uuid.equals(uuid_remove_nota)) {
-            if (value.length() > 0) {
-                int indice = atoi(value.c_str());
-                Serial.print("--- Remover nota indice: ");
-                Serial.println(indice);
+            // Não importa o que foi escrito, apenas que foi escrito.
+            // Vamos remover sempre a ÚLTIMA nota da lista.
+            
+            Serial.println("--- Remover ULTIMA nota ---");
 
-                if (indice >= 0 && indice < listaDeNotas.size()) {
-                    // Remove do somatório antes de apagar
-                    double valRemovido = atof(listaDeNotas[indice].c_str());
-                    soma_notas -= valRemovido;
-                    if(soma_notas < 0) soma_notas = 0; // Pra garantir que não vai ficar negativo
+            if (listaDeNotas.size() > 0) {
+                // Descobre qual é o último índice
+                int ultimoIndice = listaDeNotas.size() - 1;
 
-                    // Remove do vetor
-                    listaDeNotas.erase(listaDeNotas.begin() + indice);
-                    
-                    Serial.println("Nota removida com sucesso.");
-                    
-                    atualizarListaLeitura();
-                    atualizarNotificacoes(); // Dispara os dois Notifies
-                }
-                else {
-                    Serial.println("Erro: Indice invalido para remocao.");
-                }
+                // Remove do somatório antes de apagar
+                double valRemovido = atof(listaDeNotas[ultimoIndice].c_str());
+                soma_notas -= valRemovido;
+                if(soma_notas < 0) soma_notas = 0; // Pra garantir que não vai ficar negativo
+
+                // Remove do vetor (apaga a última posição)
+                listaDeNotas.erase(listaDeNotas.begin() + ultimoIndice);
+                
+                Serial.println("Ultima nota removida com sucesso.");
+                
+                atualizarListaLeitura();
+                atualizarNotificacoes(); // Dispara os dois Notifies
+            }
+            else {
+                Serial.println("Erro: Lista vazia, nada para remover.");
             }
         }
 
@@ -238,7 +269,8 @@ void setup() {
     pServer = BLEDevice::createServer();
 
     /* Criando o Serviço */
-    pService = pServer->createService(SERVICE_UUID);
+    // O número 30 é a quantidade de handles (espaço reservado)
+    pService = pServer->createService(BLEUUID(SERVICE_UUID), 30);
     
     /* Criando e Ajustando as caracteristicas */
 
@@ -283,16 +315,14 @@ void setup() {
     // b3fd6848-6bdd-46b2-b976-636465d8b072
     pCharac_media_status = pService->createCharacteristic(
                           CHAR_UUID_MEDIA_STATUS,  
-                          BLECharacteristic::PROPERTY_NOTIFY 
+                          BLECharacteristic::PROPERTY_NOTIFY
                           );
 
     // Descritores (para permitir notificação) 
     // O descritor 0x2902 é padrão para habilitar notificações
-    pCharac_nota_por_indice->addDescriptor(&notifyDescriptor);
-    // pCharac_count_notify->addDescriptor(&notifyDescriptor);
-    pCharac_count_notify->addDescriptor(new BLEDescriptor(BLEUUID((uint16_t)0x2902))); // Pode reusar ou criar um novo
-    // pCharac_media_status->addDescriptor(&notifyDescriptor);
-    pCharac_media_status->addDescriptor(new BLEDescriptor(BLEUUID((uint16_t)0x2902))); // Pode reusar ou criar um novo
+    pCharac_nota_por_indice->addDescriptor(&notifyDescriptorIndice);
+    pCharac_count_notify->addDescriptor(&notifyDescriptorCount);
+    pCharac_media_status->addDescriptor(&notifyDescriptorMedia);
 
 
     /* Definido o valor inicial para a característica de "Listar" */
