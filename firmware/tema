@@ -1,0 +1,33 @@
+Tema 1 – “Bloco de Notas BLE” (super simples e perfeito para demo)
+
+A ESP32 mantém uma lista de textos curtos (notas) armazenados na RAM.
+
+Funcionalidades BLE:
+
+Adicionar nota (escrita).
+
+Listar todas as notas (leitura).
+
+Pedir nota pelo índice (index request).
+
+Notificação quando uma nova nota é adicionada.
+        
+Vantagens:
+
+Sem cálculos, sem sensores, sem floats.
+
+Apenas strings → App Inventor ama strings.
+
+Código mínimo.
+
+Dá pra demonstrar a utilidade do notify facilmente.
+
+Exemplo:
+
+Write → "Comprar pão"
+
+Notify → "Nova nota: Comprar pão"
+
+ReadAll → ["Comprar pão","Ler slide","Estudar BLE"]
+
+IndexRequest “1” → resposta "Ler slide"
